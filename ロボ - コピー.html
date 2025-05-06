@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>工場長ロボ卓 機体アセンブリ</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; max-width: 1000px; margin: auto; }
+    fieldset { margin-bottom: 1em; border: 1px solid #ccc; padding: 10px; }
+    label { display: block; margin-top: 5px; }
+    .warning { color: red; font-weight: bold; }
+    .part-list { margin-left: 1em; }
+    .input-row { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+    .input-row label { width: 240px; }
+    .input-row input[type="number"] { width: 60px; }
+  </style>
+</head>
+<body>
+
+  <h1>工場長ロボ卓 機体アセンブリ</h1>
+
+  <form id="robotForm">
+    <fieldset>
+      <legend>ロボットの種類</legend>
+      <label><input type="radio" name="type" value="standard" checked> 標準機体</label>
+      <label><input type="radio" name="type" value="light"> 軽量機体</label>
+      <label><input type="radio" name="type" value="heavy"> 重量機体</label>
+      <label><input type="radio" name="type" value="support"> 支援機体</label>
+      <label><input type="radio" name="type" value="sniper"> 狙撃機体</label>
+    </fieldset>
+
+    <div id="robotAbilities"></div>
+
+    <fieldset>
+      <legend>パーツ構成</legend>
+      <div id="partsContainer"></div>
+    </fieldset>
+
+    <button type="button" onclick="calculate()">結果を表示</button>
+  </form>
+
+  <h2>結果</h2>
+  <div id="result"></div>
+
+  <script>
+    const robotAbilitiesMap = {
+      standard: ["なぎ払いⅡ", "頑強", "必殺攻撃Ⅲ"],
+      light: ["回避行動Ⅱ", "鎧貫きⅢ", "バトルマスター"],
+      heavy: ["全力攻撃Ⅱ", "切り返しⅠ", "かばうⅡ＆ガーディアンⅠ"],
+      support: ["魔法拡大全て", "ターゲッティング", "キャパシティ"],
+      sniper: ["ターゲッティング", "影矢", "牽制攻撃Ⅲ"]
+    };
+
+    const maxLoadMap = {
+      standard: 130,
+      light: 115,
+      heavy: 120,
+      support: 110,
+      sniper: 120
+    };
+
+    const baseStatsMap = {
+      standard: { evasion: 1, defense: 5, hp: 50, mp: 30 },
+      light: { evasion: 2, defense: 3, hp: 50, mp: 30 },
+      heavy: { evasion: -2, defense: 8, hp: 70, mp: 30 },
+      support: { evasion: 0, defense: 0, hp: 50, mp: 70 },
+      sniper: { evasion: 0, defense: 0, hp: 40, mp: 30 }
+    };
+
+    const partList = {
+      "武器モジュール": ["ショックバトン","斬艦刀","レーザーブレード","グラインドブレード","レールキャノン","クインドゥームバレル","マルチプルパルス","イグニダイトの鋳塊","サーカスミサイル","マスブレード","アンティアーティファクト"],
+      "脚部パーツ": ["軽量二脚","重量二脚","多脚","無限軌道","スラスター","バーニア"],
+      "モディフィケーション": ["精密動作ユニット","フィードバックユニット","高速動作サーボ","ターゲッティングHUD","遠隔支援サブユニット","スプリッター","隊長機の角","ニュータイプリプロダクション","駆動マナ変換","フルリンクシステム","フレーム特徴先鋭化","武装用ロケットブースター","フォースシールド"],
+      "専用機チューンナップ": ["増設バルジ","マナコーティング","装甲パージ","移動手段オミット","マナタイトの複合装甲","犠牲バンパー","機関部最適化","エネルギータンク増設"],
+      "アクセサリ": ["塗装変更［都市迷彩］","塗装変更［森林迷彩］","塗装変更［ゲーミング発光］","変型機構","予備武装コンテナ","金コーティング","無塗装化"]
+    };
+
+    const specialAbilities = {
+  "ショックバトン": {
+    "text": "【牽制攻撃Ⅱ】を習得します。この特技は「ショックバトン」を使用した攻撃でのみ宣言することができます。この武器は射程：20ｍの投擲武器として扱うことが可能です。投擲を行った場合、この武器は地面に落ち主動作で拾うまで再使用ができません",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 10,
+    "accuracy": "2d6+5",
+    "damage": "k30+18@12"
+  },
+  "斬艦刀": {
+    "text": "",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 30,
+    "accuracy": "2d6+3",
+    "damage": "k65+22@10"
+  },
+  "レーザーブレード": {
+    "text": "命中判定を行うたびにMPを5点消費します.この武器によるダメージは魔法ダメージを与えます",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 20,
+    "accuracy": "2d6+3",
+    "damage": "k20+16@9"
+  },
+  "グラインドブレード": {
+    "text": "命中判定を行うたびにHPとMPを15点消費します。\n\n\n防護点を無視して物理ダメージを与え、更に防護点を半分破壊します。\n\nこの武器を使用した場合次のラウンドまで自身の防護点を0として扱います。",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 70,
+    "accuracy": "2d6+4",
+    "damage": "k80+25@9"
+  },
+  "レールキャノン": {
+    "text": "この武器モジュールにより攻撃を行う際、命中判定に-2、-4のペナルティ修正を受けて1度の主動作で3回まで攻撃することが可能です。\n2回以上命中した場合、「防護点5点の破壊」「回避力判定に-2のペナルティ修正」「装備していると明言されているパーツの破壊」から一つを選んで対象に適用できます。\nこれらは違う能力を選ぶ限りは重複します",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 20,
+    "accuracy": "2d6+5",
+    "damage": "k20+15@9"
+  },
+  "クインドゥームバレル": {
+    "text": "魔法ダメージを与えます。命中判定を行うたびにMPを5点消費します。\n命中判定に-4のペナルティ修正を受けることで1度の主動作で2回の攻撃を行うことができます",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 30,
+    "accuracy": "2d6+4",
+    "damage": "k45+13@8"
+  },
+  "マルチプルパルス": {
+    "text": "命中判定を行うたびにHPとMPを15点消費します\n\n\n射程内の自身以外の全てのキャラクターへと攻撃を行います\n\nこの武器を使用した場合次のラウンドまで全ての回避力判定に自動失敗します",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 50,
+    "accuracy": "2d6+7",
+    "damage": "k70+30@10"
+  },
+  "イグニダイトの鋳塊": {
+    "text": "この武器モジュールを使用して命中判定を行った場合、1Rの間防護点が5点増加します",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 40,
+    "accuracy": "2d6+0",
+    "damage": "k90+25@12"
+  },
+  "サーカスミサイル": {
+    "text": "この武器による攻撃は形状:射撃、半径3/5として扱い、魔法ダメージを与えます。\nこの際「ターゲッティング」を習得している場合、任意のキャラクターを対象から除外できます。\nまた「鷹の目」を習得している場合着弾地点を3箇所まで指定することができ、3回まで連続して攻撃が可能です。\nこれらは全て別の攻撃として扱われるため、最大3回まで攻撃が命中します。\nこの武器による命中判定を行うたびに、MPを10点消費します。その代わり投擲武器ではありますが攻撃に使用しても変わらず手元に残り続けます",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 25,
+    "accuracy": "2d6+2",
+    "damage": "k20+7@10"
+  },
+  "マスブレード": {
+    "text": "常に移動力が半減します\nこの武器を使用した場合手番終了時にHPとMPを15点消費します\nこの武器のダメージは[このラウンドに移動した直線距離]分上昇します\nこの武器を使用する場合、「形状:突破」であるものとして扱うことができます\n「形状:突破」で攻撃を行った際1d6を振り、4以上の数字が出た場合落馬したものとして、転倒し落馬ダメージを受けます\n受け身判定は平目で行えます",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 70,
+    "accuracy": "2d6+4",
+    "damage": "k60+[移動距離]@9"
+  },
+  "アンティアーティファクト": {
+    "text": "この武器モジュールにより攻撃を行い、命中した場合、「防護点5点の破壊」「回避力判定に-2のペナルティ修正」「装備していると明言されているパーツの破壊」から一つを選んで対象に適用できます。これらは違う能力を選ぶ限りは重複します",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 35,
+    "accuracy": "2d6+3",
+    "damage": "k50+20@12"
+  },
+  "軽量二脚": {
+    "text": "移動力20（二足）を得ます。2つ以上「二足」である移動手段を持っている場合、移動力40（四足）として扱い、この四足を選択して0m以上通常移動を行った場合1Rの間回避判定に+1のボーナス修正を得ることができます。",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 10,
+    "accuracy": "",
+    "damage": ""
+  },
+  "重量二脚": {
+    "text": "移動力10（二足）を得ます。この脚部パーツを用いて移動する場合あらゆる移動力低下の影響を受けません、これは重量機体による移動力半分も含みます2つ以上「二足」である移動手段を持っている場合、移動力25（四足）として扱い、この四足を選択して0m以上制限移動を行った場合1Rの間防護点に+3のボーナス修正を得ることができます。またこの際制限移動の距離が5mへと変更されます",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 15,
+    "accuracy": "",
+    "damage": ""
+  },
+  "多脚": {
+    "text": "移動力25（多脚）を得ます。この移動手段を選択した場合【足さばき】を得ます",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 25,
+    "accuracy": "",
+    "damage": ""
+  },
+  "無限軌道": {
+    "text": "移動力15（無限軌道）を得ます。この移動手段を選択した場合「悪路走破」を得て足元が不安定なことによるペナルティ修正を無視できます",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 15,
+    "accuracy": "",
+    "damage": ""
+  },
+  "スラスター": {
+    "text": "移動力20（浮遊）を得ます。この移動手段を選択した場合「飛行」を得て近接攻撃への命中、回避判定に+1のボーナス修正を得ます",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 30,
+    "accuracy": "",
+    "damage": ""
+  },
+  "バーニア": {
+    "text": "クレーンを除く全ての移動力+10。瞬間達成値+2（1回）を得ます",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 20,
+    "accuracy": "",
+    "damage": ""
+  },
+  "精密動作ユニット": {
+    "text": "機体を操作しているPCが秘伝を習得しており、かつ機体がその基礎特技を使用できるならばそれを適用できます。この時武器種や技能による限定は無視されます",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 10,
+    "accuracy": "",
+    "damage": ""
+  },
+  "フィードバックユニット": {
+    "text": "機体を操作しているPCが装備している「能力増強の指輪/腕輪」「陽光/月光の指輪」を破壊した際の効果を適用できるようになります。機体の操作中は装飾品の変更は一切できません",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 25,
+    "accuracy": "",
+    "damage": ""
+  },
+  "高速動作サーボ": {
+    "text": "【両手利き】【双撃】を習得します。\n\n\n両手利きで使用可能な武装は重量20以下のものに限られます",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 30,
+    "accuracy": "",
+    "damage": ""
+  },
+  "ターゲッティングHUD": {
+    "text": "【両手利き】【双撃】を習得します。\n\n\n両手利きで使用可能な武装は重量20以下のものに限られます",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 15,
+    "accuracy": "",
+    "damage": ""
+  },
+  "遠隔支援サブユニット": {
+    "text": "「神聖魔法」「操霊魔法」「森羅魔法」から1系統を選んで習得します。レベルは5相当で魔力は7です。異なる魔法系統を選択する限り、このパーツの効果は重複します",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 15,
+    "accuracy": "",
+    "damage": ""
+  },
+  "スプリッター": {
+    "text": "【魔法拡大/全て】を得ます",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 20,
+    "accuracy": "",
+    "damage": ""
+  },
+  "隊長機の角": {
+    "text": "自身以外の全ての味方キャラクターは行動判定に+1のボーナス修正を受けます",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 15,
+    "accuracy": "",
+    "damage": ""
+  },
+  "ニュータイプリプロダクション": {
+    "text": "【剣の加護/運命変転】を習得します。",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 30,
+    "accuracy": "",
+    "damage": ""
+  },
+  "駆動マナ変換": {
+    "text": "HP、もしくはMPを任意の点数消費することで消費しなかった方の値を消費した半分だけ回復することができます。\nこれは補助動作で行い、1日に1度しか使用できません",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 30,
+    "accuracy": "",
+    "damage": ""
+  },
+  "フルリンクシステム": {
+    "text": "機体を操作しているPCの種族特徴を機体に適用します",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 15,
+    "accuracy": "",
+    "damage": ""
+  },
+  "フレーム特徴先鋭化": {
+    "text": "選択している「機体フレーム」により習得できる戦闘特技、もしくは「ディフェンススタンス」「挑発攻撃Ⅱ」「捨て身攻撃Ⅱ」から一つを選んで習得します。このパーツは異なる戦闘特技を取得する場合に限り重複して適用することができます",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 20,
+    "accuracy": "",
+    "damage": ""
+  },
+  "武装用ロケットブースター": {
+    "text": "補助動作で起動すると18Rの間近接攻撃、及び物理ダメージを与える遠隔攻撃の打撃点が+2点されます。この能力を起動すると、起動したタイミングで5点の炎属性確定ダメージを受けます。この効果は例外的に重複し、搭載している個数まで同時に起動させられます",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 10,
+    "accuracy": "",
+    "damage": ""
+  },
+  "フォースシールド": {
+    "text": "この能力はMPを20点消費することで補助動作で使用でき、1Rに1回しか使用できません。「射程/形状:10/基点指定」で「単体」へと追加HPを20点付与します。これはホーリーブレッシングなどと同様に一切のダメージ軽減を適用せず最初に消費されます。",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 15,
+    "accuracy": "",
+    "damage": ""
+  },
+  "増設バルジ": {
+    "text": "防護点+5",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 20,
+    "accuracy": "",
+    "damage": ""
+  },
+  "マナコーティング": {
+    "text": "あらゆる魔法ダメージを3点軽減します",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 20,
+    "accuracy": "",
+    "damage": ""
+  },
+  "装甲パージ": {
+    "text": "このパーツは防護点が0を下回るように装備することはできません",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 10,
+    "accuracy": "",
+    "damage": ""
+  },
+  "移動手段オミット": {
+    "text": "全ての移動手段を失います。パーツの重量を10まで超過して装備することができるようになります",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 0,
+    "accuracy": "",
+    "damage": ""
+  },
+  "マナタイトの複合装甲": {
+    "text": "防護点+5。あらゆる魔法ダメージを3点軽減します",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 30,
+    "accuracy": "",
+    "damage": ""
+  },
+  "犠牲バンパー": {
+    "text": "最初に物理/魔法ダメージを受けた時、自動でその適用ダメージを0にします。この能力は1度だけ発動します",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 35,
+    "accuracy": "",
+    "damage": ""
+  },
+  "機関部最適化": {
+    "text": "装備時に任意の判定を一つを選びます。判定を選択した場合、補助動作でMPを5点消費することで、18Rの間選んだ判定に+1のボーナス修正を受けます。この能力は例外的に同一の判定ごとに3つまで搭載することができ、搭載されている数まで重複して機動することができます",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 15,
+    "accuracy": "",
+    "damage": ""
+  },
+  "エネルギータンク増設": {
+    "text": "HP+10もしくはMP+15",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 15,
+    "accuracy": "",
+    "damage": ""
+  },
+  "塗装変更［都市迷彩］": {
+    "text": "非自然環境かつ25m以上距離の離れた「知覚:五感、機械」の魔物から効果の対象に取れらず、それらに対する判定に+2のボーナス修正を得ます",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 5,
+    "accuracy": "",
+    "damage": ""
+  },
+  "塗装変更［森林迷彩］": {
+    "text": "非自然環境かつ25m以上距離の離れた「知覚:五感、機械」の魔物から効果の対象に取れらず、それらに対する判定に+2のボーナス修正を得ます",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 5,
+    "accuracy": "",
+    "damage": ""
+  },
+  "塗装変更［ゲーミング発光］": {
+    "text": "GMからのヘイトが気持ち上がります",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 5,
+    "accuracy": "",
+    "damage": ""
+  },
+  "変型機構": {
+    "text": "得ている任意の移動手段を移動力はそのままに（四足歩行）へと変更できます元から（四足歩行）を得ている場合、それらの特殊能力を1つ適用することができます",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 5,
+    "accuracy": "",
+    "damage": ""
+  },
+  "予備武装コンテナ": {
+    "text": "何らかの効果で武器モジュールが手から離れたり破壊されたりした場合、予備の同一武器が空から補充されます。手元から失われる投擲武器の場合「自動帰還」として扱えます",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 5,
+    "accuracy": "",
+    "damage": ""
+  },
+  "金コーティング": {
+    "text": "何らかの効果で武器モジュールが手から離れたり破壊されたりした場合、予備の同一武器が空から補充されます。手元から失われる投擲武器の場合「自動帰還」として扱えます",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 5,
+    "accuracy": "",
+    "damage": ""
+  },
+  "無塗装化": {
+    "text": "毒属性のダメージを3点多く受けるようになりますが、純エネルギー属性のダメージを1点軽減できます",
+    "evasion": 0,
+    "defense": 0,
+    "weight": 5,
+    "accuracy": "",
+    "damage": ""
+  }
+};
+    const weaponStats = {};
+    partList["武器モジュール"].forEach(part => {
+      weaponStats[part] = { hit: Math.floor(Math.random() * 30 + 70), damage: part + "のダメージ効果（仮）" };
+    });
+
+    window.onload = () => {
+      const container = document.getElementById("partsContainer");
+      for (const category in partList) {
+        const group = document.createElement("fieldset");
+        const legend = document.createElement("legend");
+        legend.textContent = category;
+        group.appendChild(legend);
+        partList[category].forEach(part => {
+          const div = document.createElement("div");
+          div.className = "input-row";
+          const label = document.createElement("label");
+          label.textContent = part;
+          const input = document.createElement("input");
+          input.type = "number";
+          input.name = part;
+          input.value = "0";
+          input.min = "0";
+          div.appendChild(label);
+          div.appendChild(input);
+          group.appendChild(div);
+        });
+        container.appendChild(group);
+      }
+
+      document.querySelectorAll('input[name="type"]').forEach(r => {
+        r.addEventListener("change", showAbilityOptions);
+      });
+
+      showAbilityOptions();
+    };
+
+    function showAbilityOptions() {
+      const type = document.querySelector('input[name="type"]:checked').value;
+      const abilities = robotAbilitiesMap[type];
+      const area = document.getElementById("robotAbilities");
+      area.innerHTML = `<fieldset><legend>特殊能力</legend>
+        ${abilities.map((a, i) => `<label><input type="radio" name="ability" value="${a}" ${i === 0 ? 'checked' : ''}> ${a}</label>`).join("<br>")}
+      </fieldset>`;
+    }
+
+    function calculate() {
+      const form = document.forms["robotForm"];
+      const type = form.type.value;
+      const maxLoad = maxLoadMap[type];
+      const baseStats = { ...baseStatsMap[type] };
+      const selectedAbility = form.ability.value;
+
+      let totalWeight = 0;
+      const partsUsed = [];
+      const abilities = [];
+      const weaponDetails = [];
+
+      for (const category in partList) {
+        partList[category].forEach(part => {
+          const count = Number(form[part]?.value || 0);
+          if (count > 0) {
+            const partWeight = (specialAbilities[part]?.weight || 10) * count;
+            totalWeight += partWeight;
+            partsUsed.push(`${part} ×${count}（${partWeight}pt）`);
+
+
+            if (specialAbilities[part]) {
+              baseStats.hp += (specialAbilities[part].hp || 0) * count;
+              baseStats.mp += (specialAbilities[part].mp || 0) * count;
+              baseStats.evasion += (specialAbilities[part].evasion || 0) * count;
+              baseStats.defense += (specialAbilities[part].defense || 0) * count;
+              abilities.push(`${part}: ${specialAbilities[part].text}`);
+            }
+
+            if (category === "武器モジュール") {
+              for (let i = 0; i < count; i++) {
+                const acc = specialAbilities[part]?.accuracy || "-";
+                const dmg = specialAbilities[part]?.damage || "-";
+                weaponDetails.push(`${part} → 命中力: ${acc} / ダメージ: ${dmg}`);
+              }
+            }
+          }
+        });
+      }
+
+      const warning = totalWeight > maxLoad ? `<p class="warning">⚠ 積載量オーバー（+${totalWeight - maxLoad}pt）！</p>` : "";
+
+      document.getElementById("result").innerHTML = `
+        ${warning}
+        <p><strong>選択フレーム:</strong> ${type}</p>
+        <p><strong>選択特技:</strong> ${selectedAbility}</p>
+        <p><strong>機体ステータス:</strong> HP: ${baseStats.hp} / MP: ${baseStats.mp} / 回避力: ${baseStats.evasion} / 防護点: ${baseStats.defense}</p>
+        <p><strong>使用パーツ:</strong></p>
+        <ul class="part-list">${partsUsed.map(p => `<li>${p}</li>`).join('')}</ul>
+        <p><strong>総重量:</strong> ${totalWeight}pt（最大: ${maxLoad}pt）</p>
+        <p><strong>武器性能:</strong><br>${weaponDetails.join("<br>")}</p>
+        <p><strong>特殊能力一覧:</strong><br>${abilities.join("<br>")}</p>
+      `;
+    }
+  </script>
+
+</body>
+</html>
