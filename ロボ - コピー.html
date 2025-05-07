@@ -20,7 +20,7 @@
 
   <form id="robotForm">
     <fieldset>
-      <legend>ロボットの種類</legend>
+      <legend>機体フレーム</legend>
       <label><input type="radio" name="type" value="standard" checked> 標準機体</label>
       <label><input type="radio" name="type" value="light"> 軽量機体</label>
       <label><input type="radio" name="type" value="heavy"> 重量機体</label>
@@ -84,7 +84,7 @@
     "damage": "k30+18@12"
   },
   "斬艦刀": {
-    "text": "",
+    "text": "なし",
     "evasion": 0,
     "defense": 0,
     "weight": 30,
@@ -458,6 +458,14 @@
           input.name = part;
           input.value = "0";
           input.min = "0";
+
+          // マウススクロールで増減
+          input.addEventListener("wheel", (event) => {
+            event.preventDefault();
+            const step = event.deltaY < 0 ? 1 : -1;
+            input.value = Math.max(0, Number(input.value) + step);
+          });
+
           div.appendChild(label);
           div.appendChild(input);
           group.appendChild(div);
@@ -476,7 +484,7 @@
       const type = document.querySelector('input[name="type"]:checked').value;
       const abilities = robotAbilitiesMap[type];
       const area = document.getElementById("robotAbilities");
-      area.innerHTML = `<fieldset><legend>特殊能力</legend>
+      area.innerHTML = `<fieldset><legend>選択特技</legend>
         ${abilities.map((a, i) => `<label><input type="radio" name="ability" value="${a}" ${i === 0 ? 'checked' : ''}> ${a}</label>`).join("<br>")}
       </fieldset>`;
     }
@@ -484,6 +492,10 @@
     function calculate() {
       const form = document.forms["robotForm"];
       const type = form.type.value;
+
+      // ロボット種類のlabelテキストを取得
+      const typeLabel = document.querySelector(`input[name="type"][value="${type}"]`).parentElement.textContent.trim();
+
       const maxLoad = maxLoadMap[type];
       const baseStats = { ...baseStatsMap[type] };
       const selectedAbility = form.ability.value;
@@ -500,7 +512,6 @@
             const partWeight = (specialAbilities[part]?.weight || 10) * count;
             totalWeight += partWeight;
             partsUsed.push(`${part} ×${count}（${partWeight}pt）`);
-
 
             if (specialAbilities[part]) {
               baseStats.hp += (specialAbilities[part].hp || 0) * count;
@@ -525,14 +536,13 @@
 
       document.getElementById("result").innerHTML = `
         ${warning}
-        <p><strong>選択フレーム:</strong> ${type}</p>
+        <p><strong>総重量:</strong> ${totalWeight}pt（最大: ${maxLoad}pt）</p>
+        <p><strong>機体フレーム:</strong> ${typeLabel}</p>
         <p><strong>選択特技:</strong> ${selectedAbility}</p>
         <p><strong>機体ステータス:</strong> HP: ${baseStats.hp} / MP: ${baseStats.mp} / 回避力: ${baseStats.evasion} / 防護点: ${baseStats.defense}</p>
-        <p><strong>使用パーツ:</strong></p>
-        <ul class="part-list">${partsUsed.map(p => `<li>${p}</li>`).join('')}</ul>
-        <p><strong>総重量:</strong> ${totalWeight}pt（最大: ${maxLoad}pt）</p>
-        <p><strong>武器性能:</strong><br>${weaponDetails.join("<br>")}</p>
-        <p><strong>特殊能力一覧:</strong><br>${abilities.join("<br>")}</p>
+        <p><strong>使用パーツ:</strong><ul>${partsUsed.map(p => `<li>${p}</li>`).join('')}</ul></p>
+        <p><strong>武器性能:</strong><br><ul>${weaponDetails.map(w => `<li>${w}</li>`).join('')}</ul></p>
+        <p><strong>特殊能力一覧:</strong><br><ul>${abilities.map(a => `<li>${a}</li>`).join('')}</ul></p>
       `;
     }
   </script>
